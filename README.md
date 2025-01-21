@@ -1,6 +1,6 @@
-# target-actionkit
+# target-imis
 
-`target-actionkit` is a Singer target for ActionKit.
+`target-imis` is a Singer target for imis.
 
 Build with the [Meltano Target SDK](https://sdk.meltano.com).
 
@@ -13,13 +13,13 @@ Developer TODO: Update the below as needed to correctly describe the install pro
 Install from PyPi:
 
 ```bash
-pipx install target-actionkit
+pipx install target-imis
 ```
 
 Install from GitHub:
 
 ```bash
-pipx install git+https://github.com/ORG_NAME/target-actionkit.git@main
+pipx install git+https://github.com/ORG_NAME/target-imis.git@main
 ```
 
 -->
@@ -34,7 +34,7 @@ Developer TODO: Provide a list of config options accepted by the target.
 This section can be created by copy-pasting the CLI output from:
 
 ```
-target-actionkit --about --format=markdown
+target-imis --about --format=markdown
 ```
 -->
 
@@ -42,7 +42,7 @@ A full list of supported settings and capabilities for this
 target is available by running:
 
 ```bash
-target-actionkit --about
+target-imis --about
 ```
 
 ### Configure using environment variables
@@ -59,15 +59,15 @@ Developer TODO: If your target requires special access on the destination system
 
 ## Usage
 
-You can easily run `target-actionkit` by itself or in a pipeline using [Meltano](https://meltano.com/).
+You can easily run `target-imis` by itself or in a pipeline using [Meltano](https://meltano.com/).
 
 ### Executing the Target Directly
 
 ```bash
-target-actionkit --version
-target-actionkit --help
+target-imis --version
+target-imis --help
 # Test using the "Carbon Intensity" sample:
-tap-carbon-intensity | target-actionkit --config /path/to/target-actionkit-config.json
+tap-carbon-intensity | target-imis --config /path/to/target-imis-config.json
 ```
 
 ## Developer Resources
@@ -90,10 +90,10 @@ Create tests within the `tests` subfolder and
 poetry run pytest
 ```
 
-You can also test the `target-actionkit` CLI interface directly using `poetry run`:
+You can also test the `target-imis` CLI interface directly using `poetry run`:
 
 ```bash
-poetry run target-actionkit --help
+poetry run target-imis --help
 ```
 
 ### Testing with [Meltano](https://meltano.com/)
@@ -113,7 +113,7 @@ Next, install Meltano (if you haven't already) and any needed plugins:
 # Install meltano
 pipx install meltano
 # Initialize meltano within this directory
-cd target-actionkit
+cd target-imis
 meltano install
 ```
 
@@ -121,9 +121,9 @@ Now you can test and orchestrate using Meltano:
 
 ```bash
 # Test invocation:
-meltano invoke target-actionkit --version
+meltano invoke target-imis --version
 # OR run a test `elt` pipeline with the Carbon Intensity sample tap:
-meltano run tap-carbon-intensity target-actionkit
+meltano run tap-carbon-intensity target-imis
 ```
 
 ### SDK Dev Guide
