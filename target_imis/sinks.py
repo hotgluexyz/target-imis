@@ -9,14 +9,12 @@ class ContactsSink(IMISSink):
     name = "Contacts"
     endpoint = "Person"
     entity = "Person"
+    contacts = []
 
-    def get_matching_contact(self, email):
+    def get_contacts(self):
         offset = 0
         has_next = True
-        return None
 
-        # TODO: for some reason PUT is not working + this lookup takes way too long,
-        # so not using this code for now
         while has_next:
             search_response = self.request_api(
                 "GET",
@@ -26,13 +24,19 @@ class ContactsSink(IMISSink):
             search_response = search_response.json()
 
             # yikes I hate this
-            for contact in search_response["Items"]["$values"]:
-                for email in contact["Emails"]["$values"]:
-                    if email["Address"] == email:
-                        return contact["Id"]
+            self.contacts.extend(search_response["Items"]["$values"])
 
             has_next = search_response["HasNext"]
             offset += 100
+
+    def get_matching_contact(self, email):
+        if not self.contacts:
+            self.get_contacts()
+
+        for contact in self.contacts:
+            for email in contact["Emails"]["$values"]:
+                if email["Address"] == email:
+                    return contact
 
         return None
 
@@ -62,25 +66,33 @@ class ContactsSink(IMISSink):
         return None, False, state_dict
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
-        payload = {
-            "$type": "Asi.Soa.Membership.DataContracts.PersonData, Asi.Contracts",
-            "PersonName": {
-                "$type": "Asi.Soa.Membership.DataContracts.PersonNameData, Asi.Contracts",
-                "FirstName": record.get("first_name"),
-                "LastName": record.get("last_name"),
-            },
-            "Emails": {
-                "$type": "Asi.Soa.Membership.DataContracts.EmailDataCollection, Asi.Contracts",
-                "$values": [
-                    {
-                        "$type": "Asi.Soa.Membership.DataContracts.EmailData, Asi.Contracts",
-                        "Address": record.get("email"),
-                        "EmailType": "_Primary",
-                        "IsPrimary": True,
-                    }
-                ],
-            },
-        }
+        payload = dict()
+
+        # If there's an email, see if there's a matching contact that already exists
+        if record.get("email"):
+            payload = self.get_matching_contact(record["email"])
+
+        payload.update(
+            {
+                "$type": "Asi.Soa.Membership.DataContracts.PersonData, Asi.Contracts",
+                "PersonName": {
+                    "$type": "Asi.Soa.Membership.DataContracts.PersonNameData, Asi.Contracts",
+                    "FirstName": record.get("first_name"),
+                    "LastName": record.get("last_name"),
+                },
+                "Emails": {
+                    "$type": "Asi.Soa.Membership.DataContracts.EmailDataCollection, Asi.Contracts",
+                    "$values": [
+                        {
+                            "$type": "Asi.Soa.Membership.DataContracts.EmailData, Asi.Contracts",
+                            "Address": record.get("email"),
+                            "EmailType": "_Primary",
+                            "IsPrimary": True,
+                        }
+                    ],
+                },
+            }
+        )
 
         # Handle company name
         if record.get("company_name"):
@@ -88,10 +100,6 @@ class ContactsSink(IMISSink):
                 "$type": "Asi.Soa.Membership.DataContracts.PrimaryOrganizationInformationData, Asi.Contracts",
                 "Name": record["company_name"],
             }
-
-        # If there's an email, see if there's a matching contact that already exists
-        if record.get("email"):
-            payload["Id"] = self.get_matching_contact(record["email"])
 
         # Handle phone numbers
         if "phone_numbers" in record and isinstance(record["phone_numbers"], list):
@@ -119,6 +127,7 @@ class ContactsSink(IMISSink):
                 addresses.append(
                     {
                         "$type": "Asi.Soa.Membership.DataContracts.FullAddressData, Asi.Contracts",
+                        "AddressPurpose": "Address",
                         "Address": {
                             "$type": "Asi.Soa.Membership.DataContracts.AddressData, Asi.Contracts",
                             "AddressLines": [address.get("line1")],
