@@ -45,4 +45,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 # CLI declaration
-target-imis = 'target_imis.target:Targetimis.cli'
+target-imis = 'target_imis.target:TargetIMIS.cli'
