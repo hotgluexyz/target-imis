@@ -70,7 +70,7 @@ class ContactsSink(IMISSink):
 
         # If there's an email, see if there's a matching contact that already exists
         if record.get("email"):
-            payload = self.get_matching_contact(record["email"])
+            payload = self.get_matching_contact(record["email"]) or dict()
 
         payload.update(
             {
