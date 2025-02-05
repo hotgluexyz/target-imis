@@ -5,6 +5,7 @@ from target_hotglue.target import TargetHotglue
 
 from target_imis.sinks import (
     ContactsSink,
+    ActivitySink,
 )
 
 
@@ -13,6 +14,7 @@ class TargetIMIS(TargetHotglue):
 
     SINK_TYPES = [
         ContactsSink,
+        ActivitySink,
     ]
     name = "target-imis"
 

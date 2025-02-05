@@ -24,6 +24,14 @@ class IMISSink(HotglueSink):
     @property
     def base_url(self):
         return f"{self.config.get('site_url')}/api/"
+    
+    @property
+    def lookup_fields_dict(self):
+        return self.config.get("lookup_fields") or {}
+    
+    @property
+    def lookup_method(self):
+        return self.config.get("lookup_method") or "all"
 
     def validate_response(self, response: requests.Response) -> None:
         """Validate HTTP response."""

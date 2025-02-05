@@ -1,46 +1,72 @@
 """IMIS target sink class, which handles writing streams."""
 
 from target_imis.client import IMISSink
+from datetime import datetime
+import pytz
+import json
+import singer
 
+LOGGER = singer.get_logger()
 
 class ContactsSink(IMISSink):
     """IMIS target sink class."""
 
     name = "Contacts"
-    endpoint = "Person"
-    entity = "Person"
+    endpoint = "Party"
+    entity = "Party"
     contacts = []
 
-    def get_contacts(self):
-        offset = 0
-        has_next = True
+    def get_lookup_suffix(self, lookup_fields, record):
 
-        while has_next:
-            search_response = self.request_api(
-                "GET",
-                endpoint=f"{self.endpoint}?limit=100&offset={offset}",
-                headers=self.prepare_request_headers(),
-            )
-            search_response = search_response.json()
+        fieldKeyMapping = {
+            'firstname': "first_name",
+            'lastname': "last_name",
+            'email': "email"
+        }
 
-            # yikes I hate this
-            self.contacts.extend(search_response["Items"]["$values"])
+        if isinstance(lookup_fields, str):
+            if lookup_fields.lower() in fieldKeyMapping:
+                return f"?{lookup_fields.lower()}={record.get(fieldKeyMapping[lookup_fields.lower()])}"
+        elif isinstance(lookup_fields, list) and self.lookup_method == "all":
+            suffix = "?"
+            for field in lookup_fields:
+                if field.lower() in fieldKeyMapping:
+                    suffix += f"{field.lower()}={record.get(fieldKeyMapping[field.lower()])}&"
 
-            has_next = search_response["HasNext"]
-            offset += 100
+            return suffix[:-1]
+        
+        raise ValueError("Invalid lookup field(s) provided")
+        
+    
+    def get_matching_contact(self, record, lookup_fields):
+        LOGGER.info(f"Checking for contact with lookup field(s): {lookup_fields}")
 
-    def get_matching_contact(self, email):
-        if not self.contacts:
-            self.get_contacts()
 
-        for contact in self.contacts:
-            for email in contact["Emails"]["$values"]:
-                if email["Address"] == email:
-                    return contact
+        if isinstance(lookup_fields, list) and self.lookup_method == "sequential":
+            for field in lookup_fields:
+                matching_contact = self.get_matching_contact(record, field)
+                if matching_contact:
+                    return matching_contact
+            return None
+        
+        lookup_suffix = self.get_lookup_suffix(lookup_fields, record)
 
+        LOGGER.info(f"Searching for existing contact with suffix: {lookup_suffix}")
+        search_response = self.request_api(
+            "GET",
+            endpoint=f"{self.endpoint}{lookup_suffix}",
+            headers=self.prepare_request_headers(),
+        )
+        LOGGER.info(f"Response Status: {search_response.status_code}")
+        search_response = search_response.json()
+
+        if search_response["Items"]["$values"]:
+            LOGGER.info(f"Found contact via lookup field(s): {lookup_fields}")
+            return search_response["Items"]["$values"][0]
         return None
 
     def upsert_record(self, record: dict, context: dict):
+        LOGGER.info(f"Upserting record...")
         state_dict = dict()
         method = "POST"
         endpoint = self.endpoint
@@ -55,6 +81,7 @@ class ContactsSink(IMISSink):
             endpoint=endpoint,
             headers=self.prepare_request_headers(),
         )
+        LOGGER.info(f"Response: {response.status_code}")
 
         if response.ok:
             state_dict["success"] = True
@@ -67,10 +94,13 @@ class ContactsSink(IMISSink):
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         payload = dict()
-
+        LOGGER.info(f"Preprocessing record: {record.get('first_name', '')} {record.get('last_name', '')}")
         # If there's an email, see if there's a matching contact that already exists
-        if record.get("email"):
-            payload = self.get_matching_contact(record["email"]) or dict()
+        LOGGER.info("Checking for existing contact with email")
+
+        lookup_fields = self.lookup_fields_dict.get("Contact", "email")
+
+        payload = self.get_matching_contact(record, lookup_fields) or dict()
 
         payload.update(
             {
@@ -143,5 +173,105 @@ class ContactsSink(IMISSink):
                 "$type": "Asi.Soa.Membership.DataContracts.FullAddressDataCollection, Asi.Contracts",
                 "$values": addresses,
             }
+            LOGGER.info(f"Finished preprocessing record: {record.get('first_name', '')} {record.get('last_name', '')}")
 
         return payload
+
+
+class ActivitySink(IMISSink):
+    """IMIS Activity sink class."""
+
+    name = "Activities"
+    endpoint = "Activity"
+    entity = "Activity"
+
+
+    def preprocess_record(self, record: dict, context: dict) -> dict:
+
+        LOGGER.info(f"Preprocessing record: {record.get('title', '')}")
+
+        party_id = record.get("contact_id")
+        if not party_id:
+            raise ValueError("contact_id is required for activities and cannot be null.")
+            
+
+
+        # Hardcode current datetime in Eastern timezone (as per PHP code requirement)
+        eastern = pytz.timezone('America/Toronto')
+        now = datetime.now(eastern)
+
+        # Create the base activity payload with required type
+        payload = {
+            "$type": "Asi.Soa.Core.DataContracts.GenericEntityData, Asi.Contracts",
+            "properties": {
+                "$values": [
+                {
+                    "Name": "PartyId",
+                    "Value": party_id
+                },
+                {
+                    "Name": "TRANSACTION_DATE",
+                    "Value": now.strftime("%Y-%m-%dT%H:%M:%S")
+                }
+                ]
+            }
+        }
+
+        LOGGER.info(f"Built base payload: {payload}")
+
+
+        # Map standard fields from the record
+        field_mappings = {
+            "id": "ID",
+            "activity_datetime": "ACTIVITY_DATE",
+            "duration_seconds": "DURATION",
+            "contact_id": "CONTACT_ID",
+            "company_id": "COMPANY_ID",
+            "deal_id": "DEAL_ID",
+            "owner_id": "OWNER_ID",
+            "type": "ACTIVITY_TYPE",
+            "title": "TITLE",
+            "description": "DESCRIPTION",
+            "note": "NOTE",
+            "location": "LOCATION",
+            "status": "STATUS",
+            "start_datetime": "START_DATE",
+            "end_datetime": "END_DATE"
+        }
+
+        # Add mapped fields to payload
+        for source_field, target_field in field_mappings.items():
+            if source_field in record and record[source_field]:
+                payload["properties"]["$values"].append({
+                    "Name": target_field,
+                    "Value": record[source_field]
+                })
+
+        # Handle custom fields (UF1-UF7)
+        if "custom_fields" in record and record["custom_fields"]:
+            for custom_field in record["custom_fields"]:
+                payload["properties"]["$values"].append({
+                    "Name": custom_field["name"],
+                    "Value": custom_field["value"]
+                })
+
+        return payload
+
+    def upsert_record(self, record: dict, context: dict):
+        """Create activity record - no updates supported."""
+        state_dict = dict()
+        LOGGER.info(f"Upserting record...")
+        response = self.request_api(
+            "POST",
+            request_data=record,
+            endpoint=self.endpoint,
+            headers=self.prepare_request_headers(),
+        )
+
+        if response.ok:
+            state_dict["success"] = True
+            activity_id = response.json().get("Identity").get("IdentityElements").get("$values")[0]
+
+            return activity_id, response.ok, state_dict
+
+        return None, False, state_dict
