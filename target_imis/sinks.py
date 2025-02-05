@@ -19,19 +19,19 @@ class ContactsSink(IMISSink):
     def get_lookup_suffix(self, lookup_fields, record):
 
         fieldKeyMapping = {
-            'firstname': "first_name",
-            'lastname': "last_name",
-            'email': "email"
+            "first_name": 'firstname',
+            "last_name": 'lastname',
+            "email": 'email'
         }
 
         if isinstance(lookup_fields, str):
             if lookup_fields.lower() in fieldKeyMapping:
-                return f"?{lookup_fields.lower()}={record.get(fieldKeyMapping[lookup_fields.lower()])}"
+                return f"?{fieldKeyMapping[lookup_fields.lower()]}={record.get(lookup_fields.lower())}"
         elif isinstance(lookup_fields, list) and self.lookup_method == "all":
             suffix = "?"
             for field in lookup_fields:
                 if field.lower() in fieldKeyMapping:
-                    suffix += f"{field.lower()}={record.get(fieldKeyMapping[field.lower()])}&"
+                    suffix += f"{fieldKeyMapping[field.lower()]}={record.get(field.lower())}&"
 
             return suffix[:-1]
         
