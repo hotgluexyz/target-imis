@@ -16,26 +16,6 @@ class ContactsSink(IMISSink):
     entity = "Party"
     contacts = []
 
-    def get_contacts(self):
-        offset = 0
-        has_next = True
-
-        while has_next:
-            LOGGER.info(f"Fetching contacts from offset {offset}")
-            search_response = self.request_api(
-                "GET",
-                endpoint=f"{self.endpoint}?limit=100&offset={offset}",
-                headers=self.prepare_request_headers(),
-            )
-            LOGGER.info(f"Response Status: {search_response.status_code}")
-            search_response = search_response.json()
-            
-            # yikes I hate this
-            self.contacts.extend(search_response["Items"]["$values"])
-
-            has_next = search_response["HasNext"]
-            offset += 100
-
     def get_lookup_suffix(self, lookup_fields, record):
 
         fieldKeyMapping = {
