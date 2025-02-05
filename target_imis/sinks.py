@@ -4,14 +4,16 @@ from target_imis.client import IMISSink
 from datetime import datetime
 import pytz
 import json
+import singer
 
+LOGGER = singer.get_logger()
 
 class ContactsSink(IMISSink):
     """IMIS target sink class."""
 
     name = "Contacts"
-    endpoint = "Person"
-    entity = "Person"
+    endpoint = "Party"
+    entity = "Party"
     contacts = []
 
     def get_contacts(self):
@@ -19,31 +21,39 @@ class ContactsSink(IMISSink):
         has_next = True
 
         while has_next:
+            LOGGER.info(f"Fetching contacts from offset {offset}")
             search_response = self.request_api(
                 "GET",
                 endpoint=f"{self.endpoint}?limit=100&offset={offset}",
                 headers=self.prepare_request_headers(),
             )
+            LOGGER.info(f"Response Status: {search_response.status_code}")
             search_response = search_response.json()
-
+            
             # yikes I hate this
             self.contacts.extend(search_response["Items"]["$values"])
 
             has_next = search_response["HasNext"]
             offset += 100
 
+        
     def get_matching_contact(self, email):
-        if not self.contacts:
-            self.get_contacts()
+        LOGGER.info(f"Checking for contact with email {email}")
+        search_response = self.request_api(
+            "GET",
+            endpoint=f"{self.endpoint}?email={email}",
+            headers=self.prepare_request_headers(),
+        )
+        LOGGER.info(f"Response Status: {search_response.status_code}")
+        search_response = search_response.json()
 
-        for contact in self.contacts:
-            for email in contact["Emails"]["$values"]:
-                if email["Address"] == email:
-                    return contact
-
+        if search_response["Items"]["$values"]:
+            LOGGER.info(f"Found contact with email {email}")
+            return search_response["Items"]["$values"][0]
         return None
 
     def upsert_record(self, record: dict, context: dict):
+        LOGGER.info(f"Upserting record...")
         state_dict = dict()
         method = "POST"
         endpoint = self.endpoint
@@ -58,6 +68,7 @@ class ContactsSink(IMISSink):
             endpoint=endpoint,
             headers=self.prepare_request_headers(),
         )
+        LOGGER.info(f"Response: {response.status_code}")
 
         if response.ok:
             state_dict["success"] = True
@@ -70,9 +81,10 @@ class ContactsSink(IMISSink):
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
         payload = dict()
-
+        LOGGER.info(f"Preprocessing record: {record.get('first_name', '')} {record.get('last_name', '')}")
         # If there's an email, see if there's a matching contact that already exists
         if record.get("email"):
+            LOGGER.info(f"Checking for existing contact with email {record['email']}")
             payload = self.get_matching_contact(record["email"]) or dict()
 
         payload.update(
@@ -146,6 +158,7 @@ class ContactsSink(IMISSink):
                 "$type": "Asi.Soa.Membership.DataContracts.FullAddressDataCollection, Asi.Contracts",
                 "$values": addresses,
             }
+            LOGGER.info(f"Finished preprocessing record: {record.get('first_name', '')} {record.get('last_name', '')}")
 
         return payload
 
@@ -157,60 +170,40 @@ class ActivitySink(IMISSink):
     endpoint = "Activity"
     entity = "Activity"
 
-    def get_party_id_by_contact(self, contact_id: str) -> str:
-        """Get party ID from IMIS API using contact ID."""
-        offset = 0
-        has_next = True
-        
-        # Open file in append mode for JSONL
-        with open('/Users/renanbutkeraites/dev/target-imis/.secrets/party_response.jsonl', 'a') as f:
-            while has_next:
-                response = self.request_api(
-                    "GET",
-                    endpoint=f"Party?limit=100&offset={offset}",
-                    headers=self.prepare_request_headers(),
-                )
-                
-                if response.ok:
-                    response_data = response.json()
-                    
-                    # Write each item from the response as a separate JSON line
-                    for item in response_data["Items"]["$values"]:
-                        json.dump(item, f)
-                        f.write('\n')
-                    
-                    has_next = response_data["HasNext"]
-                    offset += 100
-                else:
-                    return None
-        
-        # For now, return None until we understand the response structure
-        return None
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
-        # Get party_id using contact_id if not in context
-        if "party_id" not in context and record.get("contact_id"):
-            party_id = self.get_party_id_by_contact(record["contact_id"])
-            if party_id:
-                context["party_id"] = party_id
+
+        LOGGER.info(f"Preprocessing record: {record.get('title', '')}")
+
+        party_id = record.get("contact_id")
+        if not party_id:
+            raise ValueError("contact_id is required for activities and cannot be null.")
+            
+
+
+        # Hardcode current datetime in Eastern timezone (as per PHP code requirement)
+        eastern = pytz.timezone('America/Toronto')
+        now = datetime.now(eastern)
 
         # Create the base activity payload with required type
         payload = {
             "$type": "Asi.Soa.Core.DataContracts.GenericEntityData, Asi.Contracts",
             "properties": {
-                "$values": []
+                "$values": [
+                {
+                    "Name": "PartyId",
+                    "Value": party_id
+                },
+                {
+                    "Name": "TRANSACTION_DATE",
+                    "Value": now.strftime("%Y-%m-%dT%H:%M:%S")
+                }
+                ]
             }
         }
 
-        # Set current datetime in Eastern timezone (as per PHP code requirement)
-        eastern = pytz.timezone('America/Toronto')
-        now = datetime.now(eastern)
-        
-        # Add transaction date (required as per PHP code)
-        payload["properties"]["$values"].append({
-            "Name": "TRANSACTION_DATE",
-            "Value": now.strftime("%Y-%m-%dT%H:%M:%S")
-        })
+        LOGGER.info(f"Built base payload: {payload}")
+
 
         # Map standard fields from the record
         field_mappings = {
@@ -245,27 +238,20 @@ class ActivitySink(IMISSink):
                 # Parse the custom field string to extract name and value
                 if isinstance(custom_field, str):
                     field_parts = dict(item.split("=") for item in custom_field.replace("'", "").split(" ") if "=" in item)
+
+
                     if "name" in field_parts and "value" in field_parts:
                         payload["properties"]["$values"].append({
                             "Name": field_parts["name"],
                             "Value": field_parts["value"]
                         })
 
-        # Add PartyId if available in context
-        if "party_id" in context and context["party_id"]:
-            payload["properties"]["$values"].append({
-                "Name": "PartyId",
-                "Value": context["party_id"]
-            })
-        else:
-            raise ValueError("PartyId is required in the context and cannot be null.")
-
         return payload
 
     def upsert_record(self, record: dict, context: dict):
         """Create activity record - no updates supported."""
         state_dict = dict()
-        
+        LOGGER.info(f"Upserting record...")
         response = self.request_api(
             "POST",
             request_data=record,
@@ -275,6 +261,8 @@ class ActivitySink(IMISSink):
 
         if response.ok:
             state_dict["success"] = True
-            return response.json().get("Id"), response.ok, state_dict
+            activity_id = response.json().get("Identity").get("IdentityElements").get("$values")[0]
+
+            return activity_id, response.ok, state_dict
 
         return None, False, state_dict
