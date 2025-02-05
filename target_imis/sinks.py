@@ -235,16 +235,10 @@ class ActivitySink(IMISSink):
         # Handle custom fields (UF1-UF7)
         if "custom_fields" in record and record["custom_fields"]:
             for custom_field in record["custom_fields"]:
-                # Parse the custom field string to extract name and value
-                if isinstance(custom_field, str):
-                    field_parts = dict(item.split("=") for item in custom_field.replace("'", "").split(" ") if "=" in item)
-
-
-                    if "name" in field_parts and "value" in field_parts:
-                        payload["properties"]["$values"].append({
-                            "Name": field_parts["name"],
-                            "Value": field_parts["value"]
-                        })
+                payload["properties"]["$values"].append({
+                    "Name": custom_field["name"],
+                    "Value": custom_field["value"]
+                })
 
         return payload
 
