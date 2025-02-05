@@ -36,19 +36,52 @@ class ContactsSink(IMISSink):
             has_next = search_response["HasNext"]
             offset += 100
 
+    def get_lookup_suffix(self, lookup_fields, record):
+
+        fieldKeyMapping = {
+            'firstname': "first_name",
+            'lastname': "last_name",
+            'email': "email"
+        }
+
+        if isinstance(lookup_fields, str):
+            if lookup_fields.lower() in fieldKeyMapping:
+                return f"?{lookup_fields.lower()}={record.get(fieldKeyMapping[lookup_fields.lower()])}"
+        elif isinstance(lookup_fields, list) and self.lookup_method == "all":
+            suffix = "?"
+            for field in lookup_fields:
+                if field.lower() in fieldKeyMapping:
+                    suffix += f"{field.lower()}={record.get(fieldKeyMapping[field.lower()])}&"
+
+            return suffix[:-1]
         
-    def get_matching_contact(self, email):
-        LOGGER.info(f"Checking for contact with email {email}")
+        raise ValueError("Invalid lookup field(s) provided")
+        
+    
+    def get_matching_contact(self, record, lookup_fields):
+        LOGGER.info(f"Checking for contact with lookup field(s): {lookup_fields}")
+
+
+        if isinstance(lookup_fields, list) and self.lookup_method == "sequential":
+            for field in lookup_fields:
+                matching_contact = self.get_matching_contact(record, field)
+                if matching_contact:
+                    return matching_contact
+            return None
+        
+        lookup_suffix = self.get_lookup_suffix(lookup_fields, record)
+
+        LOGGER.info(f"Searching for existing contact with suffix: {lookup_suffix}")
         search_response = self.request_api(
             "GET",
-            endpoint=f"{self.endpoint}?email={email}",
+            endpoint=f"{self.endpoint}{lookup_suffix}",
             headers=self.prepare_request_headers(),
         )
         LOGGER.info(f"Response Status: {search_response.status_code}")
         search_response = search_response.json()
 
         if search_response["Items"]["$values"]:
-            LOGGER.info(f"Found contact with email {email}")
+            LOGGER.info(f"Found contact via lookup field(s): {lookup_fields}")
             return search_response["Items"]["$values"][0]
         return None
 
@@ -83,9 +116,11 @@ class ContactsSink(IMISSink):
         payload = dict()
         LOGGER.info(f"Preprocessing record: {record.get('first_name', '')} {record.get('last_name', '')}")
         # If there's an email, see if there's a matching contact that already exists
-        if record.get("email"):
-            LOGGER.info(f"Checking for existing contact with email {record['email']}")
-            payload = self.get_matching_contact(record["email"]) or dict()
+        LOGGER.info("Checking for existing contact with email")
+
+        lookup_fields = self.lookup_fields_dict.get("Contact", "email")
+
+        payload = self.get_matching_contact(record, lookup_fields) or dict()
 
         payload.update(
             {
