@@ -21,16 +21,23 @@ class ContactsSink(IMISSink):
         fieldKeyMapping = {
             "first_name": 'firstname',
             "last_name": 'lastname',
-            "email": 'email'
+            "email": 'email',
+            "id": 'id'
         }
 
         if isinstance(lookup_fields, str):
             if lookup_fields.lower() in fieldKeyMapping:
+                if not record.get(lookup_fields.lower()):
+                    raise Exception(f"Missing value for lookup field: {lookup_fields}")
+
                 return f"?{fieldKeyMapping[lookup_fields.lower()]}={record.get(lookup_fields.lower())}"
         elif isinstance(lookup_fields, list) and self.lookup_method == "all":
             suffix = "?"
             for field in lookup_fields:
                 if field.lower() in fieldKeyMapping:
+                    if not record.get(field.lower()):
+                        raise Exception(f"Missing value for lookup field: {field}")
+
                     suffix += f"{fieldKeyMapping[field.lower()]}={record.get(field.lower())}&"
 
             return suffix[:-1]
@@ -186,13 +193,47 @@ class ActivitySink(IMISSink):
     entity = "Activity"
 
 
+
+    def _get_contact_from_email(self, email):
+        LOGGER.info(f"Checking for contact with email: {email}")
+        
+        search_response = self.request_api(
+            "GET",
+            endpoint=f"/Party?email={email}",
+            headers=self.prepare_request_headers(),
+        )
+        LOGGER.info(f"Response Status: {search_response.status_code}")
+        search_response = search_response.json()
+
+        if search_response["Items"]["$values"]:
+            LOGGER.info(f"Found contact via email: {email}")
+            return search_response["Items"]["$values"][0]
+        return None
+
+
+    def _get_party_id(self, record: dict) -> str:
+        """Get party ID from record."""
+        if record.get("contact_id"):
+            return record.get("contact_id")
+        elif record.get("contact_email"):
+            contact_email = record.get("contact_email")
+
+            matching_contact = self._get_contact_from_email(contact_email)
+
+            if matching_contact == None:
+                raise Exception(f"No contact found with email: {contact_email}")
+            
+            if matching_contact.get("PartyId"):
+                return matching_contact.get("PartyId")
+            else:
+                raise Exception(f"Contact found with email: {contact_email} but no PartyId found.")
+        else:
+            raise Exception("contact_id or contact_email is required for activities and cannot be null.")
+
     def preprocess_record(self, record: dict, context: dict) -> dict:
 
         LOGGER.info(f"Preprocessing record: {record.get('title', '')}")
-
-        party_id = record.get("contact_id")
-        if not party_id:
-            raise ValueError("contact_id is required for activities and cannot be null.")
+        party_id = self._get_party_id(record)
             
 
 
