@@ -109,6 +109,22 @@ class ContactsSink(IMISSink):
 
         payload = self.get_matching_contact(record, lookup_fields) or dict()
 
+        should_only_update_empty_fields = self.config.get("only_upsert_empty_fields", False)
+
+
+        if should_only_update_empty_fields:
+            fields_to_ignore = [
+                ("first_name", payload.get("PersonName", {}).get("FirstName")),
+                ("last_name", payload.get("PersonName", {}).get("LastName")),
+                ("email", payload.get("Emails", {}).get("$values", [{}])[0].get("Address")),
+                ("company_name", payload.get("PrimaryOrganization", {}).get("Name"))
+            ]
+            for field_name, existing_field_value in fields_to_ignore:
+                if existing_field_value:
+                    record[field_name] = existing_field_value
+
+    
+
         payload.update(
             {
                 "$type": "Asi.Soa.Membership.DataContracts.PersonData, Asi.Contracts",
@@ -121,10 +137,10 @@ class ContactsSink(IMISSink):
                     "$type": "Asi.Soa.Membership.DataContracts.EmailDataCollection, Asi.Contracts",
                     "$values": [
                         {
-                            "$type": "Asi.Soa.Membership.DataContracts.EmailData, Asi.Contracts",
-                            "Address": record.get("email"),
-                            "EmailType": "_Primary",
-                            "IsPrimary": True,
+                        "$type": "Asi.Soa.Membership.DataContracts.EmailData, Asi.Contracts",
+                        "Address": record.get("email"),
+                        "EmailType": "_Primary",
+                        "IsPrimary": True,
                         }
                     ],
                 },
@@ -140,16 +156,19 @@ class ContactsSink(IMISSink):
 
         # Handle phone numbers
         if "phone_numbers" in record and isinstance(record["phone_numbers"], list):
-            phones = []
+            if should_only_update_empty_fields and payload.get("Phones"):
+                phones = payload["Phones"]["$values"]
+            else:
+                phones = []
 
-            for phone in record["phone_numbers"]:
-                phones.append(
-                    {
-                        "$type": "Asi.Soa.Membership.DataContracts.PhoneData, Asi.Contracts",
-                        "Number": phone["number"],
-                        "PhoneType": phone["type"],
-                    }
-                )
+                for phone in record["phone_numbers"]:
+                    phones.append(
+                        {
+                            "$type": "Asi.Soa.Membership.DataContracts.PhoneData, Asi.Contracts",
+                            "Number": phone["number"],
+                            "PhoneType": phone["type"],
+                        }
+                    )
 
             payload["Phones"] = {
                 "$type": "Asi.Soa.Membership.DataContracts.PhoneDataCollection, Asi.Contracts",
@@ -158,23 +177,26 @@ class ContactsSink(IMISSink):
 
         # Handle addresses
         if "addresses" in record and isinstance(record["addresses"], list):
-            addresses = []
+            if should_only_update_empty_fields and payload.get("Addresses"):
+                addresses = payload["Addresses"]["$values"]
+            else:
+                addresses = []
 
-            for address in record["addresses"]:
-                addresses.append(
-                    {
-                        "$type": "Asi.Soa.Membership.DataContracts.FullAddressData, Asi.Contracts",
-                        "AddressPurpose": "Address",
-                        "Address": {
-                            "$type": "Asi.Soa.Membership.DataContracts.AddressData, Asi.Contracts",
-                            "AddressLines": [address.get("line1")],
-                            "CityName": address.get("city"),
-                            "PostalCode": address.get("postal_code"),
-                            "RegionName": address.get("state"),
-                            "CountryCode": address.get("country"),
-                        },
-                    }
-                )
+                for address in record["addresses"]:
+                    addresses.append(
+                        {
+                            "$type": "Asi.Soa.Membership.DataContracts.FullAddressData, Asi.Contracts",
+                            "AddressPurpose": "Address",
+                            "Address": {
+                                "$type": "Asi.Soa.Membership.DataContracts.AddressData, Asi.Contracts",
+                                "AddressLines": [address.get("line1")],
+                                "CityName": address.get("city"),
+                                "PostalCode": address.get("postal_code"),
+                                "RegionName": address.get("state"),
+                                "CountryCode": address.get("country"),
+                            },
+                        }
+                    )
 
             payload["Addresses"] = {
                 "$type": "Asi.Soa.Membership.DataContracts.FullAddressDataCollection, Asi.Contracts",
