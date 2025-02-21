@@ -177,7 +177,9 @@ class ContactsSink(IMISSink):
 
         # Handle addresses
         if "addresses" in record and isinstance(record["addresses"], list):
-            if should_only_update_empty_fields and payload.get("Addresses"):
+            # If there are no addresses, IMIS returns an address in values with empty fields
+            non_nullish_addresses = [address for address in payload.get("Addresses", {}).get("$values", []) if address.get("line1")]
+            if should_only_update_empty_fields and non_nullish_addresses:
                 addresses = payload["Addresses"]["$values"]
             else:
                 addresses = []
