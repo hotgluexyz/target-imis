@@ -122,17 +122,18 @@ class ContactsSink(IMISSink):
             for field_name, existing_field_value in fields_to_ignore:
                 if existing_field_value:
                     record[field_name] = existing_field_value
+        
+        person_name = payload.get("PersonName", {
+            "$type": "Asi.Soa.Membership.DataContracts.PersonNameData, Asi.Contracts"
+        })
 
-    
+        person_name["FirstName"] = record.get("first_name")
+        person_name["LastName"] = record.get("last_name")
 
         payload.update(
             {
                 "$type": "Asi.Soa.Membership.DataContracts.PersonData, Asi.Contracts",
-                "PersonName": {
-                    "$type": "Asi.Soa.Membership.DataContracts.PersonNameData, Asi.Contracts",
-                    "FirstName": record.get("first_name"),
-                    "LastName": record.get("last_name"),
-                },
+                "PersonName": person_name,
                 "Emails": {
                     "$type": "Asi.Soa.Membership.DataContracts.EmailDataCollection, Asi.Contracts",
                     "$values": [
