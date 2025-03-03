@@ -117,7 +117,7 @@ class ContactsSink(IMISSink):
                 ("first_name", payload.get("PersonName", {}).get("FirstName")),
                 ("last_name", payload.get("PersonName", {}).get("LastName")),
                 ("email", payload.get("Emails", {}).get("$values", [{}])[0].get("Address")),
-                ("company_name", payload.get("PrimaryOrganization", {}).get("Name"))
+                ("company_name", payload.get("PrimaryOrganization", {}).get("OrganizationPartyId"))
             ]
             for field_name, existing_field_value in fields_to_ignore:
                 if existing_field_value:
@@ -152,7 +152,7 @@ class ContactsSink(IMISSink):
         if record.get("company_name"):
             payload["PrimaryOrganization"] = {
                 "$type": "Asi.Soa.Membership.DataContracts.PrimaryOrganizationInformationData, Asi.Contracts",
-                "Name": record["company_name"],
+                "OrganizationPartyId": record["company_name"],
             }
 
         # Handle phone numbers
