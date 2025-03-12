@@ -71,6 +71,23 @@ class ContactsSink(IMISSink):
             LOGGER.info(f"Found contact via lookup field(s): {lookup_fields}")
             return search_response["Items"]["$values"][0]
         return None
+    
+    def get_organization_by_id(self, party_id):
+        # Organizations use same endpoint as contacts
+        LOGGER.info(f"Getting organization by id: {party_id}")
+        search_response = self.request_api(
+            "GET",
+            endpoint=f"{self.endpoint}?id={party_id}",
+            headers=self.prepare_request_headers(),
+        )
+        LOGGER.info(f"Response Status: {search_response.status_code}")
+        search_response = search_response.json()
+
+        if search_response["Items"]["$values"]:
+            LOGGER.info(f"Found organization via id: {party_id}")
+            return search_response["Items"]["$values"][0]
+        return None
+
 
     def upsert_record(self, record: dict, context: dict):
         LOGGER.info(f"Upserting record...")
@@ -150,10 +167,16 @@ class ContactsSink(IMISSink):
 
         # Handle company name
         if record.get("company_id"):
-            payload["PrimaryOrganization"] = {
-                "$type": "Asi.Soa.Membership.DataContracts.PrimaryOrganizationInformationData, Asi.Contracts",
-                "OrganizationPartyId": record["company_id"],
-            }
+
+            company = self.get_organization_by_id(record.get("company_id"))
+
+            if company and company.get("OrganizationName"):
+                company_name = company.get("OrganizationName")
+                payload["PrimaryOrganization"] = {
+                    "$type": "Asi.Soa.Membership.DataContracts.PrimaryOrganizationInformationData, Asi.Contracts",
+                    "OrganizationPartyId": record["company_id"],
+                    "Name": company_name
+                }
 
         # Handle phone numbers
         if "phone_numbers" in record and isinstance(record["phone_numbers"], list):
