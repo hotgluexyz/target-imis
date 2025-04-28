@@ -27,18 +27,18 @@ class ContactsSink(IMISSink):
 
         if isinstance(lookup_fields, str):
             if lookup_fields.lower() in fieldKeyMapping:
-                if not record.get(lookup_fields.lower()):
-                    raise Exception(f"Missing value for lookup field: {lookup_fields}")
-
-                return f"?{fieldKeyMapping[lookup_fields.lower()]}={record.get(lookup_fields.lower())}"
+                if record.get(lookup_fields.lower()):
+                    return f"?{fieldKeyMapping[lookup_fields.lower()]}={record.get(lookup_fields.lower())}"
+            return None
         elif isinstance(lookup_fields, list) and self.lookup_method == "all":
             suffix = "?"
             for field in lookup_fields:
                 if field.lower() in fieldKeyMapping:
-                    if not record.get(field.lower()):
-                        raise Exception(f"Missing value for lookup field: {field}")
-
-                    suffix += f"{fieldKeyMapping[field.lower()]}={record.get(field.lower())}&"
+                    if record.get(field.lower()):
+                        suffix += f"{fieldKeyMapping[field.lower()]}={record.get(field.lower())}&"
+            
+            if suffix == "?":
+                return None
 
             return suffix[:-1]
         
@@ -57,6 +57,9 @@ class ContactsSink(IMISSink):
             return None
         
         lookup_suffix = self.get_lookup_suffix(lookup_fields, record)
+
+        if not lookup_suffix:
+            return None
 
         LOGGER.info(f"Searching for existing contact with suffix: {lookup_suffix}")
         search_response = self.request_api(
@@ -124,7 +127,9 @@ class ContactsSink(IMISSink):
 
         lookup_fields = self.lookup_fields_dict.get("Contact", "email")
 
-        payload = self.get_matching_contact(record, lookup_fields) or dict()
+        payload = self.get_matching_contact(record, lookup_fields) or {
+            "$type": "Asi.Soa.Membership.DataContracts.PersonData, Asi.Contracts",
+        }
 
         should_only_update_empty_fields = self.config.get("only_upsert_empty_fields", False)
 
@@ -149,21 +154,27 @@ class ContactsSink(IMISSink):
 
         payload.update(
             {
-                "$type": "Asi.Soa.Membership.DataContracts.PersonData, Asi.Contracts",
                 "PersonName": person_name,
-                "Emails": {
-                    "$type": "Asi.Soa.Membership.DataContracts.EmailDataCollection, Asi.Contracts",
-                    "$values": [
-                        {
-                        "$type": "Asi.Soa.Membership.DataContracts.EmailData, Asi.Contracts",
-                        "Address": record.get("email"),
-                        "EmailType": "_Primary",
-                        "IsPrimary": True,
-                        }
-                    ],
-                },
             }
         )
+
+
+        email_payload = payload.get("Emails", {
+                    "$type": "Asi.Soa.Membership.DataContracts.EmailDataCollection, Asi.Contracts",
+                    "$values": [],
+                })
+        
+        # Add email to existing emails if it's not already there
+        if record.get("email") and not any(email.get("Address") == record.get("email") for email in email_payload.get("$values", [])):
+            email_payload["$values"].append({
+                "$type": "Asi.Soa.Membership.DataContracts.EmailData, Asi.Contracts",
+                "Address": record.get("email"),
+                "EmailType": "_Primary",
+                "IsPrimary": True,
+            })
+
+        payload["Emails"] = email_payload
+
 
         # Handle company name
         if record.get("company_id"):
@@ -172,32 +183,38 @@ class ContactsSink(IMISSink):
 
             if company and company.get("OrganizationName"):
                 company_name = company.get("OrganizationName")
-                payload["PrimaryOrganization"] = {
+                payload["PrimaryOrganization"] = payload.get("PrimaryOrganization", {})
+                payload["PrimaryOrganization"].update({
                     "$type": "Asi.Soa.Membership.DataContracts.PrimaryOrganizationInformationData, Asi.Contracts",
                     "OrganizationPartyId": record["company_id"],
                     "Name": company_name
-                }
+                })
 
         # Handle phone numbers
         if "phone_numbers" in record and isinstance(record["phone_numbers"], list):
-            if should_only_update_empty_fields and payload.get("Phones"):
+            payload["Phones"] = payload.get("Phones", {
+                "$type": "Asi.Soa.Membership.DataContracts.PhoneDataCollection, Asi.Contracts",
+                "$values": []
+            })
+            if should_only_update_empty_fields:
                 phones = payload["Phones"]["$values"]
             else:
-                phones = []
+                phones = payload["Phones"]["$values"]
 
-                for phone in record["phone_numbers"]:
-                    phones.append(
-                        {
+                for new_phone in record["phone_numbers"]:
+                    if not any(phone.get("Number") == new_phone["number"] for phone in phones):
+                        phones.append(
+                            {
                             "$type": "Asi.Soa.Membership.DataContracts.PhoneData, Asi.Contracts",
-                            "Number": phone["number"],
-                            "PhoneType": phone["type"],
-                        }
-                    )
+                            "Number": new_phone["number"],
+                            "PhoneType": new_phone["type"],
+                            }
+                        )
 
-            payload["Phones"] = {
-                "$type": "Asi.Soa.Membership.DataContracts.PhoneDataCollection, Asi.Contracts",
-                "$values": phones,
-            }
+
+            payload["Phones"].update({
+                "$values": phones
+            })
 
         # Handle addresses
         if "addresses" in record and isinstance(record["addresses"], list):
