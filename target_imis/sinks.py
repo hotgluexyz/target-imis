@@ -201,13 +201,13 @@ class ContactsSink(IMISSink):
             else:
                 phones = payload["Phones"]["$values"]
 
-                for phone in record["phone_numbers"]:
-                    if not any(phone.get("Number") == phone["number"] for phone in phones):
+                for new_phone in record["phone_numbers"]:
+                    if not any(phone.get("Number") == new_phone["number"] for phone in phones):
                         phones.append(
                             {
                             "$type": "Asi.Soa.Membership.DataContracts.PhoneData, Asi.Contracts",
-                            "Number": phone["number"],
-                            "PhoneType": phone["type"],
+                            "Number": new_phone["number"],
+                            "PhoneType": new_phone["type"],
                             }
                         )
 
