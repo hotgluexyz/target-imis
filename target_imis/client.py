@@ -58,9 +58,10 @@ class IMISSink(HotglueSink):
         address_purposes = response.json().get("Items", []).get("$values", [])
 
         if not address_purposes:
-            raise FatalAPIError("No address purposes found")
+            self.logger.warning("No address purposes found, using 'Address'")
+            return "Address"
         if not isinstance(address_purposes, list):
-            raise FatalAPIError("Address purposes is not a list")
+            raise FatalAPIError(f"Address purposes is not a list: {address_purposes}")
         
         default_address_purpose = next((ap for ap in address_purposes if ap.get("IsDefaultAddress")), None)
         if not default_address_purpose:
