@@ -1,5 +1,6 @@
 from target_hotglue.client import HotglueSink
 import requests
+from functools import cached_property
 from singer_sdk.plugin_base import PluginBase
 from typing import Dict, List, Optional
 import singer
@@ -47,6 +48,27 @@ class IMISSink(HotglueSink):
             except:
                 msg = self.response_error_message(response)
             raise FatalAPIError(msg)
+        
+    @cached_property
+    def default_address_purpose(self):
+        default_address_path = f"{self.base_url}AddressPurpose"
+        response = requests.get(default_address_path, headers=self.prepare_request_headers())
+        self.validate_response(response)
+
+        address_purposes = response.json().get("Items", []).get("$values", [])
+
+        if not address_purposes:
+            self.logger.warning("No address purposes found, using 'Address'")
+            return "Address"
+        if not isinstance(address_purposes, list):
+            raise FatalAPIError(f"Address purposes is not a list: {address_purposes}")
+        
+        default_address_purpose = next((ap for ap in address_purposes if ap.get("IsDefaultAddress")), None)
+        if not default_address_purpose:
+            self.logger.warning("No default address purpose found, using 'Address'")
+            return "Address"
+        
+        return default_address_purpose.get("Name")
 
     def prepare_request_headers(self):
         """Prepare request headers."""

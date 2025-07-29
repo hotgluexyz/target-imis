@@ -229,7 +229,7 @@ class ContactsSink(IMISSink):
                     addresses.append(
                         {
                             "$type": "Asi.Soa.Membership.DataContracts.FullAddressData, Asi.Contracts",
-                            "AddressPurpose": "Address",
+                            "AddressPurpose": self.default_address_purpose,
                             "Address": {
                                 "$type": "Asi.Soa.Membership.DataContracts.AddressData, Asi.Contracts",
                                 "AddressLines": [address.get("line1")],
