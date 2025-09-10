@@ -246,6 +246,14 @@ class ContactsSink(IMISSink):
                 "$values": addresses,
             }
             LOGGER.info(f"Finished preprocessing record: {record.get('first_name', '')} {record.get('last_name', '')}")
+            
+        # Handle custom fields
+        if "custom_fields" in record and record["custom_fields"]:
+            for custom_field in record["custom_fields"]:
+                payload["properties"]["$values"].append({
+                    "Name": custom_field["name"],
+                    "Value": custom_field["value"]
+                })
 
         return payload
 
