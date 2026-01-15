@@ -1,7 +1,8 @@
 """IMIS target class."""
 
-from singer_sdk import typing as th
-from target_hotglue.target import TargetHotglue
+from hotglue_singer_sdk import typing as th
+from hotglue_singer_sdk.target_sdk.target import TargetHotglue
+from hotglue_singer_sdk.helpers.capabilities import AlertingLevel
 
 from target_imis.sinks import (
     ContactsSink,
@@ -17,6 +18,7 @@ class TargetIMIS(TargetHotglue):
         ActivitySink,
     ]
     name = "target-imis"
+    alerting_level = AlertingLevel.ERROR
 
     def __init__(
         self,

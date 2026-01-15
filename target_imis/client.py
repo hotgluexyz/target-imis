@@ -1,10 +1,12 @@
-from target_hotglue.client import HotglueSink
+from hotglue_singer_sdk.target_sdk.client import HotglueSink
 import requests
 from functools import cached_property
-from singer_sdk.plugin_base import PluginBase
+from hotglue_singer_sdk.plugin_base import PluginBase
 from typing import Dict, List, Optional
 import singer
-from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
+from hotglue_singer_sdk.exceptions import FatalAPIError, RetriableAPIError
+from hotglue_etl_exceptions import InvalidPayloadError
+from target_imis.exceptions import RetriableInvalidPayloadError
 from target_imis.auth import IMISAuth
 
 LOGGER = singer.get_logger()
