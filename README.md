@@ -26,6 +26,10 @@ pipx install git+https://github.com/ORG_NAME/target-imis.git@main
 
 ## Configuration
 
+For detailed configuration documentation and a sample configuration file, see the [`template/`](template/) folder:
+- **Configuration Guide**: See [`template/README.md`](template/README.md) for complete documentation on all configuration options
+- **Sample Config**: See [`template/config.json`](template/config.json) for a template configuration file
+
 ### Accepted Config Options
 
 <!--
@@ -68,6 +72,8 @@ target-imis --version
 target-imis --help
 # Test using the "Carbon Intensity" sample:
 tap-carbon-intensity | target-imis --config /path/to/target-imis-config.json
+# Or test with the sample payload:
+target-imis --config /path/to/target-imis-config.json --input sample_payload/data.singer
 ```
 
 ## Developer Resources
