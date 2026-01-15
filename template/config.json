@@ -1,0 +1,10 @@
+{
+  "username": "your_imis_username",
+  "password": "your_imis_password",
+  "site_url": "https://your-imis-instance.com",
+  "lookup_fields": {
+    "Contact": "email"
+  },
+  "lookup_method": "all",
+  "only_upsert_empty_fields": false
+}
