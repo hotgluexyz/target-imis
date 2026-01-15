@@ -43,12 +43,21 @@ class IMISSink(HotglueSink):
             raise FatalAPIError(msg)
         elif response.status_code in [429] or 500 <= response.status_code < 600:
             msg = self.response_error_message(response)
+            if response.status_code == 500 and "An error occurred. Please contact the administrator." in response.text:
+                raise RetriableInvalidPayloadError(msg, response)
             raise RetriableAPIError(msg, response)
         elif 400 <= response.status_code < 500:
             try:
                 msg = response.text
             except:
                 msg = self.response_error_message(response)
+            if response.status_code == 400 and "ValidationResultsData" in msg:
+                try:
+                    error = response.json()
+                    error_message = error.get("Errors", {}).get("$values", [])[0]["Message"]
+                except:
+                    error_message = msg
+                raise InvalidPayloadError(error_message)
             raise FatalAPIError(msg)
         
     @cached_property
