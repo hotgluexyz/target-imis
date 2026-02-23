@@ -5,6 +5,7 @@ from datetime import datetime
 import pytz
 import json
 import singer
+from hotglue_etl_exceptions import InvalidPayloadError
 
 LOGGER = singer.get_logger()
 
@@ -286,14 +287,14 @@ class ActivitySink(IMISSink):
             matching_contact = self._get_contact_from_email(contact_email)
 
             if matching_contact == None:
-                raise Exception(f"No contact found with email: {contact_email}")
+                raise InvalidPayloadError(f"No contact found with email: {contact_email}")
             
             if matching_contact.get("PartyId"):
                 return matching_contact.get("PartyId")
             else:
-                raise Exception(f"Contact found with email: {contact_email} but no PartyId found.")
+                raise InvalidPayloadError(f"Contact found with email: {contact_email} but no PartyId found.")
         else:
-            raise Exception("contact_id or contact_email is required for activities and cannot be null.")
+            raise InvalidPayloadError("contact_id or contact_email is required for activities and cannot be null.")
 
     def preprocess_record(self, record: dict, context: dict) -> dict:
 
