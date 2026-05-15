@@ -26,7 +26,10 @@ class IMISSink(HotglueSink):
 
     @property
     def base_url(self):
-        return f"{self.config.get('site_url')}/api/"
+        site_url = self.config.get('site_url', '').rstrip('/')
+        if not site_url.startswith(("http://", "https://")):
+            site_url = f"https://{site_url}"
+        return f"{site_url}/api/"
     
     @property
     def lookup_fields_dict(self):
