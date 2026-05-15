@@ -16,7 +16,9 @@ class IMISAuth(requests.auth.AuthBase):
             raise InvalidCredentialsError(self.__credentials_error)
 
         if self.__access_token is None or datetime.now() > self.__expires_at:
-            site_url = self.config["site_url"]
+            site_url = self.config["site_url"].rstrip("/")
+            if not site_url.startswith(("http://", "https://")):
+                site_url = f"https://{site_url}"
             username = self.config['username']
             password = self.config['password']
 
